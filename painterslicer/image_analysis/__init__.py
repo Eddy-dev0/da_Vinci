@@ -11,6 +11,7 @@ from .pipeline import (
 )
 from .layer_superres import compose_layers
 from .sliced_plan import build_sliced_plan
+from .stroke_planner import build_stroke_plan
 
 __all__ = [
     "ImageAnalyzer",
@@ -23,4 +24,5 @@ __all__ = [
     "enhance_layer",
     "compose_layers",
     "build_sliced_plan",
+    "build_stroke_plan",
 ]
