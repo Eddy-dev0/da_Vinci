@@ -137,6 +137,7 @@ class MainWindow(QMainWindow):
         # aktuell geladener Bildpfad + letzter Export
         self.current_image_path = None
         self.last_paintcode_export = None
+        self.robot_backend = None
 
 
 
@@ -791,11 +792,9 @@ class MainWindow(QMainWindow):
         - checkt Firmware
         Für jetzt: nur Dummy.
         """
-        QMessageBox.information(
-            self,
-            "Maschine",
-            "Maschinen-Verbindung (serial/USB) kommt später hier rein."
-        )
+        if self._ensure_robot_backend():
+            self._append_robot_log("Verbunden mit Robot Arm Backend (COM3).")
+            QMessageBox.information(self, "Maschine", "Robot Arm Backend bereit.")
     def resizeEvent(self, event):
         """
         Wenn das Fenster größer/kleiner gezogen wird,
@@ -839,6 +838,8 @@ class MainWindow(QMainWindow):
             QDoubleSpinBox,
             QPushButton,
             QGroupBox,
+            QTextEdit,
+            QHBoxLayout,
         )
 
         tab = QWidget()
@@ -911,9 +912,155 @@ class MainWindow(QMainWindow):
         info_label.setStyleSheet("color: #aaa; font-size: 12px;")
         outer_layout.addWidget(info_label)
 
+        robot_group = QGroupBox("Robot Arm (Arduino COM3)")
+        robot_layout = QVBoxLayout()
+        robot_group.setLayout(robot_layout)
+
+        machine_row = QHBoxLayout()
+        machine_label = QLabel("Machine:")
+        self.machine_combo = QComboBox()
+        self.machine_combo.addItems(["Simulated", "Robot Arm (Arduino COM3)"])
+        machine_row.addWidget(machine_label)
+        machine_row.addWidget(self.machine_combo)
+        robot_layout.addLayout(machine_row)
+
+        button_row = QHBoxLayout()
+        connect_btn = QPushButton("Connect")
+        calibrate_btn = QPushButton("Calibrate/Teach")
+        scan_canvas_btn = QPushButton("Scan Canvas")
+        scan_inventory_btn = QPushButton("Scan Inventory")
+        dry_run_btn = QPushButton("Dry-run")
+        execute_btn = QPushButton("Execute")
+        button_row.addWidget(connect_btn)
+        button_row.addWidget(calibrate_btn)
+        button_row.addWidget(scan_canvas_btn)
+        button_row.addWidget(scan_inventory_btn)
+        button_row.addWidget(dry_run_btn)
+        button_row.addWidget(execute_btn)
+        robot_layout.addLayout(button_row)
+
+        self.robot_log = QTextEdit()
+        self.robot_log.setReadOnly(True)
+        self.robot_log.setStyleSheet("background-color: #1e1e1e; color: #ccc;")
+        self.robot_log.setMinimumHeight(120)
+        robot_layout.addWidget(self.robot_log)
+
+        connect_btn.clicked.connect(self.action_connect_machine)
+        calibrate_btn.clicked.connect(self._on_robot_calibrate)
+        scan_canvas_btn.clicked.connect(self._on_robot_scan_canvas)
+        scan_inventory_btn.clicked.connect(self._on_robot_scan_inventory)
+        dry_run_btn.clicked.connect(self._on_robot_dry_run)
+        execute_btn.clicked.connect(self._on_robot_execute)
+
+        outer_layout.addWidget(robot_group)
+
         outer_layout.addStretch(1)
 
         return tab
+
+    def _append_robot_log(self, message: str) -> None:
+        if not hasattr(self, "robot_log") or self.robot_log is None:
+            return
+        self.robot_log.append(message)
+
+    def _ensure_robot_backend(self) -> bool:
+        if self.machine_combo.currentText() != "Robot Arm (Arduino COM3)":
+            self._append_robot_log("Robot Arm nicht ausgewählt.")
+            return False
+        if self.robot_backend is not None:
+            return True
+        try:
+            from painterslicer.machines.robotarm_backend.backend import RobotArmBackend, load_settings
+        except Exception as exc:
+            self._append_robot_log(f"Backend Import fehlgeschlagen: {exc}")
+            return False
+        settings_path = Path("config/settings.yaml")
+        calibration_path = Path("data/calibration.json")
+        inventory_path = Path("data/inventory.json")
+        try:
+            settings = load_settings(settings_path)
+            self.robot_backend = RobotArmBackend(
+                settings=settings,
+                calibration_path=calibration_path,
+                inventory_path=inventory_path,
+                logger=LOGGER,
+            )
+            return True
+        except Exception as exc:
+            self._append_robot_log(f"Backend Init fehlgeschlagen: {exc}")
+            return False
+
+    def _on_robot_calibrate(self) -> None:
+        self._append_robot_log("Kalibrierung: Bitte teach_cli nutzen.")
+        QMessageBox.information(
+            self,
+            "Kalibrierung",
+            "Kalibrierung erfolgt über robot_control.teach_cli.",
+        )
+
+    def _on_robot_scan_canvas(self) -> None:
+        if not self._ensure_robot_backend():
+            return
+        try:
+            from painterslicer.machines.robotarm_backend.vision_aruco import scan_canvas, VisionSettings
+            settings = VisionSettings(
+                camera_index=0,
+                canvas_width_mm=self.robot_backend.settings.canvas_width_mm,
+                canvas_height_mm=self.robot_backend.settings.canvas_height_mm,
+                marker_ids={"tl": 0, "tr": 1, "br": 2, "bl": 3},
+                output_path=Path("canvas_homography.json"),
+            )
+            output = scan_canvas(settings)
+            self._append_robot_log(f"Canvas-Scan gespeichert: {output}")
+        except Exception as exc:
+            self._append_robot_log(f"Canvas-Scan fehlgeschlagen: {exc}")
+
+    def _on_robot_scan_inventory(self) -> None:
+        if not self._ensure_robot_backend():
+            return
+        try:
+            from painterslicer.machines.robotarm_backend.inventory_scan import scan_inventory, InventoryScanSettings
+            output_path = Path("data/inventory.json")
+            settings = InventoryScanSettings(camera_index=0, output_path=output_path)
+            scan_inventory(settings)
+            self._append_robot_log(f"Inventory gespeichert: {output_path}")
+        except Exception as exc:
+            self._append_robot_log(f"Inventory-Scan fehlgeschlagen: {exc}")
+
+    def _on_robot_dry_run(self) -> None:
+        if not self._ensure_robot_backend():
+            return
+        if not self.last_paintcode_export:
+            self._append_robot_log("Kein PaintCode vorhanden.")
+            return
+        preview_path = Path("preview_robot.png")
+        try:
+            result = self.robot_backend.run_paintcode(
+                self.last_paintcode_export,
+                dry_run=True,
+                preview_path=preview_path,
+            )
+            self._append_robot_log(
+                f"Dry-run OK. Punkte: {result.points_sent}, Tools: {result.tool_changes}, "
+                f"Dauer: {result.duration_s:.2f}s"
+            )
+        except Exception as exc:
+            self._append_robot_log(f"Dry-run fehlgeschlagen: {exc}")
+
+    def _on_robot_execute(self) -> None:
+        if not self._ensure_robot_backend():
+            return
+        if not self.last_paintcode_export:
+            self._append_robot_log("Kein PaintCode vorhanden.")
+            return
+        try:
+            result = self.robot_backend.run_paintcode(self.last_paintcode_export, dry_run=False)
+            self._append_robot_log(
+                f"Ausführung OK. Punkte: {result.points_sent}, Tools: {result.tool_changes}, "
+                f"Dauer: {result.duration_s:.2f}s"
+            )
+        except Exception as exc:
+            self._append_robot_log(f"Ausführung fehlgeschlagen: {exc}")
 
 
 
@@ -2085,4 +2232,3 @@ class MainWindow(QMainWindow):
         interval_ms = max(1, interval_ms)
 
         self.anim_timer.setInterval(interval_ms)
-

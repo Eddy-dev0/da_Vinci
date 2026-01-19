@@ -1,0 +1,21 @@
+robotarm:
+  port: COM3
+  baud: 9600
+  speed: 40
+  step_mm: 3.0
+  timeout_s: 5.0
+  retry_count: 3
+  retry_delay_s: 0.5
+  canvas_width_mm: 400.0
+  canvas_height_mm: 300.0
+  paintcode_normalized: false
+  preview_pixels_per_mm: 2.0
+  allow_out_of_bounds: false
+  servo_limits:
+    - [0, 180]
+    - [0, 180]
+    - [0, 180]
+    - [0, 180]
+    - [0, 180]
+    - [0, 180]
+    - [0, 180]
