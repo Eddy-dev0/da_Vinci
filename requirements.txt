@@ -20,3 +20,5 @@ torch
 torchvision
 tqdm
 pyserial
+
+PyYAML

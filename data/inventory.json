@@ -1,0 +1,22 @@
+{
+  "paints": [
+    {
+      "id": 1,
+      "name": "Primary Red",
+      "hsv": [0, 255, 255],
+      "lab": [136, 208, 195],
+      "dip_pose_name": "paint_red_dip",
+      "wipe_pose_name": "wipe_pad"
+    }
+  ],
+  "tools": [
+    {
+      "id": 101,
+      "tool_type": "ROUND",
+      "size_class": "medium",
+      "size_mm": 10.0,
+      "pickup_pose_name": "brush_round_medium_pick",
+      "place_pose_name": "brush_round_medium_place"
+    }
+  ]
+}
