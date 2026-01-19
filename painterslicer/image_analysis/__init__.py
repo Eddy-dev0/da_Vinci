@@ -10,6 +10,7 @@ from .pipeline import (
     enhance_layer,
 )
 from .layer_superres import compose_layers
+from .sliced_plan import build_sliced_plan
 
 __all__ = [
     "ImageAnalyzer",
@@ -21,4 +22,5 @@ __all__ = [
     "StrokeInstruction",
     "enhance_layer",
     "compose_layers",
+    "build_sliced_plan",
 ]
